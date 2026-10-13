@@ -1,70 +1,189 @@
-# 👻 GhostNotes — The Invisible Floating Overlay for Windows
+<div align="center">
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows_10_%7C_11-0078D6.svg)](https://www.microsoft.com/windows)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![GUI](https://img.shields.io/badge/GUI-PySide6-41CD52.svg?logo=qt&logoColor=white)](https://www.qt.io/qt-for-python)
+# 👻 GhostNotes
+### The Stealth, Always-on-Top Floating Scratchpad for Windows
 
-**GhostNotes** is a lightweight, frameless, always-on-top desktop scratchpad engineered natively for Windows 10 and Windows 11. Designed for developers, presenters, gamers, and multitaskers who need notes, prompts, or snippets on screen without cluttering their workflow or exposing notes to others.
+*Invisible to Screen Shares • Click-Through Ghost Mode • Zero Desktop Footprint*
+
+<br/>
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows_10_%7C_11-0078D6.svg?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20Qt6-41CD52.svg?style=for-the-badge&logo=qt&logoColor=white)](https://www.qt.io/qt-for-python)
+[![Tests](https://img.shields.io/badge/Tests-13%20Passing-success.svg?style=for-the-badge)](tests/)
+
+<br/>
+
+```text
+╭─────────────────────────────────────────────────── [🔵][🔴] ╮
+│ GHOST NOTES                                                │
+│ Today's notes                                              │
+│                                                            │
+│   • Important reminder / code snippet                      │
+│   • Meeting prompts & interview crib sheet                 │
+│   • Ideas floating right over your screen...               │
+│                                                            │
+│                                                         ◢  │
+╰────────────────────────────────────────────────────────────╯
+```
+
+</div>
 
 ---
 
-## ⚡ Flagship Features
+## 💡 What is GhostNotes?
+
+When working across multiple windows, codebases, or presentations, switching back and forth destroys focus. **GhostNotes** floats quietly above your active windows like a digital heads-up display:
+
+- **Keep notes in plain sight** while working, gaming, browsing, or presenting.
+- **Switch to Ghost Mode** to make the notes semi-transparent (35% opacity) and click straight through them into the windows underneath.
+- **Total Screen Share Invisibility**: GhostNotes is completely invisible to Zoom, Discord, Google Meet, Teams, OBS, and screenshot grabbers. Only your physical monitor displays your notes.
+
+---
+
+## ⚡ Mode Comparison Matrix
+
+| Feature | 📝 Normal Mode | 👻 Ghost Mode (Click-Through) |
+| :--- | :--- | :--- |
+| **Window Opacity** | `100%` — Solid dark theme | `35%` — Faded floating overlay |
+| **Mouse Interaction** | Select, write, move, resize | Clicks & scrolls pass straight through to windows below |
+| **Keyboard Input** | Full typing & editing | Read-only protection (no accidental typing) |
+| **Screen Capture** | 🚫 **Invisible** (Hidden from recordings) | 🚫 **Invisible** (Hidden from recordings) |
+| **Taskbar & Alt+Tab** | 🚫 **Excluded** (Zero OS clutter) | 🚫 **Excluded** (Zero OS clutter) |
+| **Mouse Cursor** | Standard Arrow (`ArrowCursor`) | Natural underlying app cursor passthrough |
+| **Controls Access** | `🔵` Blue & `🔴` Red fully interactive | `🔵` Blue & `🔴` Red remain independently clickable |
+
+---
+
+## 🌟 Flagship Features
 
 ### 👁️ Total Ghost Mode (Screen Share & Screenshot Invisible)
-*Your notes are for your eyes only.*
-- Utilizing native Windows Win32 display affinity (`WDA_EXCLUDEFROMCAPTURE`), GhostNotes is **completely invisible to screenshots, video recordings, and screen sharing applications**.
-- Share your full desktop on **Discord, Zoom, Microsoft Teams, Google Meet, OBS, or Slack** without your audience ever seeing your notes.
-- Windows Snipping Tool and screenshot shortcuts will capture right through GhostNotes as if it were not there.
+> *Your notes are for your eyes only.*
+- Utilizing native Windows Win32 display affinity (`WDA_EXCLUDEFROMCAPTURE`), GhostNotes is **completely invisible to screen recordings, screenshots, and streaming tools**.
+- Share your full screen on **Discord, Zoom, Microsoft Teams, Google Meet, OBS, or Slack** without anyone seeing your crib sheet or notes.
+- The Windows Snipping Tool and screenshot shortcuts capture right through GhostNotes as if it were not there.
 
 ### 🎯 Not a Shower (Strict Zero-Distraction Cursor)
-*No mouse giveaways.*
-- **Never changes your mouse cursor**: Hovering over text, buttons, headers, or resize areas never changes the mouse pointer into an I-beam, text selector, pointing hand, or resize arrow.
-- The standard Windows arrow pointer (`Qt.CursorShape.ArrowCursor`) is strictly preserved across the entire interface.
-- In Ghost Mode, your cursor passes through seamlessly and respects the underlying window's cursor behavior without interference.
+> *Zero cursor giveaways.*
+- **Never changes your mouse cursor**: Hovering over text, buttons, headers, or borders never turns your cursor into an I-beam, text selector, pointing hand, or resize arrow.
+- Strictly locks the standard Windows arrow pointer (`Qt.CursorShape.ArrowCursor`) across the entire application interface.
+- In Ghost Mode, your cursor passes through seamlessly and respects whatever application is running behind it.
 
 ### 🖱️ True Ghost Click-Through
-*Interact with what's underneath.*
-- Press the **Blue Dot** to activate Ghost Mode: opacity drops to **35%**, and native Win32 extended styles (`WS_EX_LAYERED | WS_EX_TRANSPARENT`) route all clicks, scrolls, and mouse movements directly to the applications underneath.
-- Code, browse, game, or read beneath your floating notes without having to minimize or reposition them.
-- Accidental keystrokes are prevented while Ghost Mode is engaged.
+> *Interact directly with what's underneath.*
+- Press the **Blue Dot** to activate Ghost Mode: opacity drops to **35%**, and native Win32 extended styles (`WS_EX_LAYERED | WS_EX_TRANSPARENT`) route all clicks, scrolls, and drags to underlying applications.
+- Code in your IDE, browse the web, or play games beneath your floating notes without minimizing them.
 
 ### 🥷 Phantom Taskbar & Alt+Tab Exclusion
-*Zero desktop footprint.*
-- Neither the notes overlay nor the controls appear as an application tile on the Windows taskbar.
-- Excluded from the **Alt+Tab** switcher via native `WS_EX_TOOLWINDOW` extended styles.
-- Stays quietly pinned above your workspace without cluttering your OS navigation.
+> *Leaves zero desktop clutter.*
+- Does not create an icon or tile on the Windows taskbar.
+- Completely excluded from the **Alt+Tab** window switcher via native `WS_EX_TOOLWINDOW` extended styles.
+- Stays pinned above normal windows without getting in the way of OS navigation.
 
 ### 🔴 Minimalist Micro-Controls (Zero Tooltip Overlay)
-*Clean and distraction-free.*
-- Two discrete micro-controls aligned at the top-right:
-  - **Blue Dot:** Toggle Ghost Mode (5 × 5 px visible dot, 18 × 18 px clickable hit target).
-  - **Red Dot:** Clean Exit & Save (5 × 5 px visible dot, 18 × 18 px clickable hit target).
-- **No hover popups or tooltip overlays**: Buttons never display distracting hover text boxes that block your view.
+> *Ultra-clean aesthetic.*
+- Two discrete micro-controls aligned horizontally at the top-right corner:
+  - `🔵` **Blue Dot (5 × 5 px):** Toggle Ghost Mode (with an 18 × 18 px clickable hit target).
+  - `🔴` **Red Dot (5 × 5 px):** Save notes and cleanly exit (with an 18 × 18 px clickable hit target).
+- **No hover popups or tooltip overlays**: No text boxes pop up to obscure your screen when moving your mouse nearby.
 
-### 🧩 Independent HWND Architecture
-*Never get trapped in click-through mode.*
-- The controls window operates on a distinct native Windows window handle (`HWND`) from the notes window.
-- Even when the notes window is 100% click-through, the Blue Dot remains independently interactive so you can instantly switch back to Normal Mode.
+### 🧩 Independent HWND Dual-Engine
+> *Never get trapped in click-through mode.*
+- The controls window runs as a separate native Windows window handle (`HWND`) from the notes window.
+- Even when the notes window is 100% click-through, the Blue Dot remains independently interactive so you can exit Ghost Mode with a single click.
 
-### 💾 Atomic Persistence & Display Recovery
-*Reliable and resilient.*
-- Automatically saves text and coordinates (debounced 500ms) to `%LOCALAPPDATA%\GhostNotes\notes.json`.
-- Uses atomic file swaps (`os.replace`) to prevent corruption during sudden power losses or system reboots.
-- **Smart multi-monitor recovery**: Disconnecting an external monitor automatically snaps GhostNotes back onto your primary active display so your notes are never lost off-screen.
-
-### 🚀 Silent Background Launcher
-- Start GhostNotes instantly with `GhostNotes.vbs` without spawning a black Command Prompt or terminal console window.
+### 💾 Atomic Persistence & Multi-Monitor Recovery
+> *Never lose a single character.*
+- Automatically saves notes and window coordinates (debounced 500ms) to `%LOCALAPPDATA%\GhostNotes\notes.json`.
+- Uses atomic file replacement (`os.replace`) to protect against corruption during unexpected shutdowns.
+- **Multi-Monitor Display Recovery**: If an external monitor is disconnected, GhostNotes automatically repositions back onto your active primary display.
 
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
-| Shortcut | Action |
+| Shortcut | Description |
 | :--- | :--- |
-| `Ctrl + S` | Immediately save notes and window position |
-| `Ctrl + Shift + N` | Clear notes editor (prompts for confirmation) |
-| `Escape` | Hide notes and controls overlay |
+| <kbd>Ctrl</kbd> + <kbd>S</kbd> | Save notes and window geometry immediately |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> | Clear notes editor (prompts for confirmation) |
+| <kbd>Esc</kbd> | Hide the notes and controls overlay |
+
+---
+
+## 🏗️ Architecture Overview
+
+```mermaid
+graph TD
+    subgraph Windows Desktop Session
+        A[Notes Window HWND] -->|WS_EX_LAYERED + WS_EX_TRANSPARENT| B[Underlying Applications]
+        C[Controls Window HWND] -->|Native Click Target| D[Blue Dot: Toggle Ghost Mode]
+        C -->|Save & Exit| E[Red Dot: Clean Close]
+        A -->|Move & Resize Sync| C
+        A -.->|WDA_EXCLUDEFROMCAPTURE| F[Screen Shares / Zoom / Discord / OBS]
+    end
+
+    classDef hidden fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b;
+    class F hidden;
+```
+
+---
+
+## 🚀 Quick Start Guide
+
+### System Requirements
+- **OS:** Windows 10 or Windows 11 (64-bit)
+- **Python:** Python 3.11+
+
+### 1. Clone & Setup
+
+```powershell
+# Clone the repository
+git clone https://github.com/Anoop-Kumar-31/Ghost-Notes.git
+cd Ghost-Notes
+
+# Create & activate a virtual environment
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Launch GhostNotes
+
+> [!TIP]
+> **Zero-Console Silent Launch:** Double-click **`GhostNotes.vbs`** in File Explorer to run GhostNotes silently in the background with `pythonw.exe` without opening a terminal window.
+
+Or launch via terminal:
+```powershell
+python main.py
+```
+
+### 3. Run Automated Tests
+
+```powershell
+python -m pytest -v
+```
+
+All 13 automated tests validate persistence, corrupted JSON recovery, strict arrow cursor preservation, dual-HWND separation, native Win32 click-through styles, and taskbar exclusion.
+
+---
+
+## 📦 Packaging & Standalone Execution
+
+### No Need to Build? Use `GhostNotes.vbs`!
+If you don't want to compile an `.exe`, simply use **`GhostNotes.vbs`**. It launches GhostNotes instantly with no terminal window, giving you the exact same clean desktop experience as an executable with zero setup.
+
+### Optional: Standalone Single-File `.exe` (PyInstaller)
+To package GhostNotes into a portable `.exe` that runs on machines without Python:
+
+```powershell
+pip install pyinstaller
+pyinstaller --noconsole --name "GhostNotes" --clean main.py
+```
+
+The resulting executable will be generated at `dist/GhostNotes.exe`.
 
 ---
 
@@ -74,18 +193,18 @@
 ghost-notes/
 ├── .editorconfig          # Code style and indentation rules
 ├── .gitattributes         # Git LF/CRLF normalization
-├── .gitignore             # Comprehensive Python/Win32 ignore rules
+├── .gitignore             # Git ignore rules (caches, builds, venv)
 ├── GhostNotes.vbs         # Silent background launcher (no console window)
 ├── LICENSE                # Apache License 2.0
 ├── README.md              # Documentation
 ├── requirements.txt       # Dependencies (PySide6, pytest)
-├── main.py                # Application entry point
+├── main.py                # Main application entry point
 ├── ghost_notes/           # Core application package
 │   ├── __init__.py
 │   ├── controls.py        # Independent Blue/Red control window
 │   ├── main_window.py     # Main floating notes window & UI
-│   ├── persistence.py     # Atomic JSON load/save & screen geometry sanitization
-│   └── win32_utils.py     # Win32 ctypes API (WS_EX styles, capture affinity, taskbar exclusion)
+│   ├── persistence.py     # Atomic JSON load/save & screen geometry recovery
+│   └── win32_utils.py     # Win32 ctypes API (WS_EX styles, capture affinity, taskbar)
 └── tests/                 # Automated test suite (13 passing tests)
     ├── __init__.py
     ├── conftest.py        # Shared pytest fixtures
@@ -93,100 +212,6 @@ ghost-notes/
     ├── test_ui.py         # UI dimensions, cursors, HWND separation
     └── test_win32.py      # Win32 click-through, capture exclusion, taskbar styles
 ```
-
----
-
-## 🛠️ Installation & Setup
-
-### Requirements
-- **Operating System:** Windows 10 or Windows 11 (64-bit recommended)
-- **Python:** Python 3.11+ (Python 3.12 supported)
-
-### 1. Setup Virtual Environment
-
-Open PowerShell in the `ghost-notes` directory:
-
-```powershell
-# Create virtual environment
-py -3 -m venv .venv
-
-# Activate virtual environment
-.\.venv\Scripts\Activate.ps1
-```
-
-*(If PowerShell script execution is restricted, run: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` or directly invoke `.\.venv\Scripts\python.exe`)*
-
-### 2. Install Dependencies
-
-```powershell
-pip install -r requirements.txt
-```
-
-### 3. Launch GhostNotes
-
-#### Option A: Silent Background Launch (Recommended)
-Double-click `GhostNotes.vbs` in File Explorer, or run:
-```powershell
-wscript.exe GhostNotes.vbs
-```
-*Launches GhostNotes silently using `pythonw.exe` without opening a terminal window.*
-
-#### Option B: Terminal Launch
-```powershell
-python main.py
-```
-
-### 4. Run Automated Test Suite
-
-```powershell
-python -m pytest -v
-```
-
-All 13 automated tests validate:
-- Persistence, corrupted JSON recovery, and atomic writing.
-- Off-screen monitor recovery and geometry sanitization.
-- Strict arrow cursor enforcement across all UI components.
-- Dual HWND separation and independent controls responsiveness.
-- Win32 click-through styles (`WS_EX_TRANSPARENT | WS_EX_LAYERED`).
-- Taskbar and Alt+Tab exclusion (`WS_EX_TOOLWINDOW`).
-
----
-
-## 🔬 Under the Hood: Win32 Architecture
-
-GhostNotes interfaces with the Windows Win32 API via Python's `ctypes`:
-
-1. **Click-Through Routing:**
-   - Adds `WS_EX_LAYERED (0x00080000)` and `WS_EX_TRANSPARENT (0x00000020)` to the notes window HWND.
-   - Windows passes mouse hit-tests (`WM_NCHITTEST`) through to underlying windows.
-2. **Screen Capture Exclusion:**
-   - Calls `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE [0x00000011])` to render the window completely invisible to Desktop Duplication API, screen share encoders, and screen grabbers.
-3. **Taskbar & Alt+Tab Stripping:**
-   - Sets `WS_EX_TOOLWINDOW (0x00000080)` and clears `WS_EX_APPWINDOW (0x00040000)`.
-4. **Independent Control HWND:**
-   - The controls window lives as a separate native OS window. When the notes window is set to click-through, the controls window is unaffected and remains clickable.
-
----
-
-## 📦 Packaging & Standalone Execution
-
-### No Need to Install or Build? Use `GhostNotes.vbs`!
-If you don't want to install PyInstaller or build a binary, **you don't have to**:
-- Simply double-click **`GhostNotes.vbs`**.
-- It runs GhostNotes silently in the background via `pythonw.exe` without opening a terminal window.
-- You get the exact same clean, console-less experience as a compiled desktop app with zero compilation time.
-
----
-
-### Optional: Compiling into a Standalone `.exe` (PyInstaller)
-If you want to distribute GhostNotes as a single, portable executable to a machine that doesn't have Python installed:
-
-```powershell
-pip install pyinstaller
-pyinstaller --noconsole --name "GhostNotes" --clean main.py
-```
-
-The compiled standalone executable will be generated at `dist/GhostNotes.exe`.
 
 ---
 
