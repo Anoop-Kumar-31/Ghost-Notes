@@ -95,7 +95,7 @@ When working across multiple windows, codebases, or presentations, switching bac
 - The Windows Snipping Tool and screenshot shortcuts capture right through GhostNotes as if it were not there.
 
 <p align="center">
-  <img src="images/InvisibleNote.png" width="40%" alt="Total Ghost Mode - Invisible to Screen Capture" />
+  <img src="images/InvisibleNote.png" width="50%" alt="Total Ghost Mode - Invisible to Screen Capture" />
 </p>
 
 ### 🎯 Not a Shower (Strict Zero-Distraction Cursor)
