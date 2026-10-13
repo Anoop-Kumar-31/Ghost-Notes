@@ -1,7 +1,7 @@
 """
 Persistence module for Ghost Notes.
 Handles atomic saving, loading, and geometry validation for notes and settings.
-./persistence.py
+Supports multiple notes, view mode (grid/list), and active note tracking.
 """
 
 import os
@@ -20,6 +20,10 @@ MIN_HEIGHT = 150
 
 DEFAULT_DATA: Dict[str, Any] = {
     "text": "",
+    "notes": [],
+    "active_note_id": None,
+    "view_mode": "grid",
+    "current_view": "home",
     "geometry": {
         "x": None,
         "y": None,
@@ -64,10 +68,44 @@ def load_data(storage_path: Optional[Path] = None) -> Dict[str, Any]:
             logger.warning("Storage JSON is not an object. Using default settings.")
             return dict(DEFAULT_DATA)
 
-        # Merge with defaults to ensure all keys are present
         result = dict(DEFAULT_DATA)
-        if "text" in data and isinstance(data["text"], str):
-            result["text"] = data["text"]
+
+        # Load notes list or migrate legacy single-note text
+        if "notes" in data and isinstance(data["notes"], list):
+            result["notes"] = data["notes"]
+        elif "text" in data and data["text"]:
+            result["notes"] = [{
+                "id": "note_1",
+                "title": "Today's notes",
+                "content": data["text"],
+                "updated_at": "",
+                "created_at": "",
+            }]
+            result["active_note_id"] = "note_1"
+
+        if "active_note_id" in data and isinstance(data["active_note_id"], str):
+            result["active_note_id"] = data["active_note_id"]
+        elif result["notes"]:
+            result["active_note_id"] = result["notes"][0].get("id")
+
+        if "view_mode" in data and data["view_mode"] in ("grid", "list"):
+            result["view_mode"] = data["view_mode"]
+
+        if "current_view" in data and data["current_view"] in ("home", "note"):
+            result["current_view"] = data["current_view"]
+
+        # Keep legacy 'text' field synced with the active note
+        active_content = ""
+        for n in result["notes"]:
+            if n.get("id") == result["active_note_id"]:
+                active_content = n.get("content", "")
+                break
+        if not active_content and result["notes"]:
+            active_content = result["notes"][0].get("content", "")
+        if "text" in data and isinstance(data["text"], str) and not result["notes"]:
+            active_content = data["text"]
+        result["text"] = active_content
+
         if "ghost_mode" in data and isinstance(data["ghost_mode"], bool):
             result["ghost_mode"] = data["ghost_mode"]
 
@@ -96,8 +134,31 @@ def save_data(data: Dict[str, Any], storage_path: Optional[Path] = None) -> bool
         parent_dir = path.parent
         parent_dir.mkdir(parents=True, exist_ok=True)
 
+        notes = data.get("notes")
+        active_id = data.get("active_note_id")
+        text = str(data.get("text", ""))
+
+        if not isinstance(notes, list):
+            notes = [{
+                "id": active_id or "default",
+                "title": "Today's notes",
+                "content": text,
+                "updated_at": "",
+                "created_at": "",
+            }]
+        elif active_id and text:
+            # Sync active note content
+            for n in notes:
+                if n.get("id") == active_id:
+                    n["content"] = text
+                    break
+
         payload = {
-            "text": str(data.get("text", "")),
+            "text": text,
+            "notes": notes,
+            "active_note_id": active_id,
+            "view_mode": data.get("view_mode", "grid"),
+            "current_view": data.get("current_view", "home"),
             "geometry": {
                 "x": data.get("geometry", {}).get("x"),
                 "y": data.get("geometry", {}).get("y"),
@@ -107,7 +168,6 @@ def save_data(data: Dict[str, Any], storage_path: Optional[Path] = None) -> bool
             "ghost_mode": bool(data.get("ghost_mode", False)),
         }
 
-        # Write to temporary file in the same directory for atomic replace
         with tempfile.NamedTemporaryFile(
             mode="w",
             dir=parent_dir,
@@ -144,26 +204,22 @@ def sanitize_geometry(
     h = max(MIN_HEIGHT, height if height is not None else DEFAULT_HEIGHT)
 
     if not screen_rects:
-        # Default fallback if no screens detected
         return (x if x is not None else 100, y if y is not None else 100, w, h)
 
     primary = screen_rects[0]
 
-    # If x or y is not specified, place near upper right of primary screen
     if x is None or y is None:
         px, py, pw, _ = primary
         default_x = px + pw - w - 40
         default_y = py + 60
         return (default_x, default_y, w, h)
 
-    # Check if window intersects with any active screen by at least 50x50 pixels
     for sx, sy, sw, sh in screen_rects:
         intersects_x = (x + w > sx + 50) and (x < sx + sw - 50)
         intersects_y = (y + h > sy + 50) and (y < sy + sh - 50)
         if intersects_x and intersects_y:
             return (x, y, w, h)
 
-    # Off-screen (e.g. disconnected monitor): reposition to upper-right of primary screen
     px, py, pw, _ = primary
     fallback_x = px + pw - w - 40
     fallback_y = py + 60

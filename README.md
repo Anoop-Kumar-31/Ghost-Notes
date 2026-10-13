@@ -11,22 +11,44 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-0078D6.svg?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Anoop-Kumar-31/Ghost-Notes)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20Qt6-41CD52.svg?style=for-the-badge&logo=qt&logoColor=white)](https://www.qt.io/qt-for-python)
-[![Tests](https://img.shields.io/badge/Tests-16%20Passing-success.svg?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-17%20Passing-success.svg?style=for-the-badge)](tests/)
 
 <br/>
 
-```text
-╭───────────────────────────────────────────────── [🔵][🔴] ╮
-│ GHOST NOTES                                                │
-│ Today's notes                                              │
-│                                                            │
-│   • Important reminder / code snippet                      │
-│   • Meeting prompts & interview crib sheet                 │
-│   • Ideas floating right over your screen...               │
-│                                                            │
-│                                                         _| │
-╰────────────────────────────────────────────────────────────╯
-```
+
+<p align="center">
+  <img
+    src="images/NotesHome.png"
+    width="90%"
+    alt="GhostNotes Home Grid View"
+  />
+</p>
+
+<br />
+
+<table>
+  <tr>
+    <td width="45%" align="center">
+      <img
+        src="images/VisibleNote.png"
+        width="83%"
+        alt="GhostNotes Visible Note"
+      />
+      <br />
+      <strong>Visible Note</strong>
+    </td>
+    <td width="45%" align="center">
+      <img
+        src="images/InvisibleNote.png"
+        width="83%"
+        alt="GhostNotes Invisible Note"
+      />
+      <br />
+      <strong>Invisible Note</strong>
+    </td>
+  </tr>
+</table>
+
 
 </div>
 
@@ -58,11 +80,23 @@ When working across multiple windows, codebases, or presentations, switching bac
 
 ## 🌟 Flagship Features
 
+### 📑 Multiple Notes & Responsive Grid/List Home Page
+> *Effortlessly organize thoughts in one lightweight window.*
+- **Create & store unlimited notes**: Tap `+ New` to instantly spawn a new note.
+- **Dedicated Note Title Line**: An elegant top title line lets you name notes. If left blank, the starting words of the note automatically become the preview title.
+- **Bottom-Left Home Button (`[⌂ Home]`)**: Conveniently return to your notes collection via the bottom-left Home button.
+- **Responsive Dynamic Grid**: When resizing the window wider, the card grid automatically expands its column count (`2, 3, 4, 5, 6... n × n`) to fit your display width.
+- **List vs. Grid View Preference**: Toggle seamlessly between compact List (`☰`) and card Grid (`⊞`) views.
+
 ### 👁️ Total Ghost Mode (Screen Share & Screenshot Invisible)
 > *Your notes are for your eyes only.*
 - Utilizing native Windows Win32 display affinity (`WDA_EXCLUDEFROMCAPTURE`), GhostNotes is **completely invisible to screen recordings, screenshots, and streaming tools**.
 - Share your full screen on **Discord, Zoom, Microsoft Teams, Google Meet, OBS, or Slack** without anyone seeing your crib sheet or notes.
 - The Windows Snipping Tool and screenshot shortcuts capture right through GhostNotes as if it were not there.
+
+<p align="center">
+  <img src="images/InvisibleNote.png" width="40%" alt="Total Ghost Mode - Invisible to Screen Capture" />
+</p>
 
 ### 🎯 Not a Shower (Strict Zero-Distraction Cursor)
 > *Zero cursor giveaways.*
@@ -199,6 +233,10 @@ ghost-notes/
 ├── README.md              # Documentation
 ├── requirements.txt       # Dependencies (PySide6, pytest)
 ├── main.py                # Main application entry point
+├── images/                # Screenshots and UI previews
+│   ├── InvisibleNote.png  # Screen capture exclusion demo
+│   ├── NotesHome.png      # Home notes grid preview
+│   └── VisibleNote.png    # Note editor detail preview
 ├── ghost_notes/           # Core application package
 │   ├── __init__.py
 │   ├── controls.py        # Independent Blue/Red control window
@@ -207,7 +245,7 @@ ghost-notes/
 │   ├── platform_utils.py  # Cross-platform dispatcher (macOS Cocoa / Windows Win32)
 │   ├── macos_utils.py     # macOS Cocoa ctypes bindings (NSWindow sharing, mouse ignore)
 │   └── win32_utils.py     # Windows Win32 ctypes API (WS_EX styles, capture affinity)
-└── tests/                 # Automated test suite (16 passing tests)
+└── tests/                 # Automated test suite (17 passing tests)
     ├── __init__.py
     ├── conftest.py        # Shared pytest fixtures
     ├── test_macos.py      # macOS contract & platform dispatch tests
