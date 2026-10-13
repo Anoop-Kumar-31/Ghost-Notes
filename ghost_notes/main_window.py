@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from .controls import ControlsWindow
-from .win32_utils import set_click_through, exclude_from_taskbar, set_capture_excluded
+from .platform_utils import set_click_through, exclude_from_taskbar, set_capture_excluded
 from .persistence import (
     load_data,
     save_data,

@@ -9,7 +9,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, Signal, QRectF, QSize
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QAbstractButton
-from .win32_utils import exclude_from_taskbar, set_capture_excluded
+from .platform_utils import exclude_from_taskbar, set_capture_excluded
 
 
 class DotButton(QAbstractButton):

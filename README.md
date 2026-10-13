@@ -1,17 +1,17 @@
 <div align="center">
 
 # 👻 GhostNotes
-### The Stealth, Always-on-Top Floating Scratchpad for Windows
+### The Stealth, Always-on-Top Floating Scratchpad for Windows & macOS
 
 *Invisible to Screen Shares • Click-Through Ghost Mode • Zero Desktop Footprint*
 
 <br/>
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows_10_%7C_11-0078D6.svg?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-0078D6.svg?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Anoop-Kumar-31/Ghost-Notes)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20Qt6-41CD52.svg?style=for-the-badge&logo=qt&logoColor=white)](https://www.qt.io/qt-for-python)
-[![Tests](https://img.shields.io/badge/Tests-13%20Passing-success.svg?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-16%20Passing-success.svg?style=for-the-badge)](tests/)
 
 <br/>
 
@@ -204,10 +204,13 @@ ghost-notes/
 │   ├── controls.py        # Independent Blue/Red control window
 │   ├── main_window.py     # Main floating notes window & UI
 │   ├── persistence.py     # Atomic JSON load/save & screen geometry recovery
-│   └── win32_utils.py     # Win32 ctypes API (WS_EX styles, capture affinity, taskbar)
-└── tests/                 # Automated test suite (13 passing tests)
+│   ├── platform_utils.py  # Cross-platform dispatcher (macOS Cocoa / Windows Win32)
+│   ├── macos_utils.py     # macOS Cocoa ctypes bindings (NSWindow sharing, mouse ignore)
+│   └── win32_utils.py     # Windows Win32 ctypes API (WS_EX styles, capture affinity)
+└── tests/                 # Automated test suite (16 passing tests)
     ├── __init__.py
     ├── conftest.py        # Shared pytest fixtures
+    ├── test_macos.py      # macOS contract & platform dispatch tests
     ├── test_persistence.py# Persistence, atomic writes, corrupted JSON recovery
     ├── test_ui.py         # UI dimensions, cursors, HWND separation
     └── test_win32.py      # Win32 click-through, capture exclusion, taskbar styles
