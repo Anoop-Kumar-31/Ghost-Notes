@@ -1,8 +1,12 @@
 <div align="center">
+<img
+    src="images/GhostNotes_Hero.png"
+    width="90%"
+    alt="GhostNotes Home Grid View"
+  />
 
 # 👻 GhostNotes
-### The Stealth, Always-on-Top Floating Scratchpad for Windows & macOS
-
+### Note that stay out of your way.
 *Invisible to Screen Shares • Click-Through Ghost Mode • Zero Desktop Footprint*
 
 <br/>
