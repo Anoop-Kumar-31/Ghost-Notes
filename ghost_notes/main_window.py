@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QPushButton,
 )
+from markdown_it import MarkdownIt
 
 from .controls import ControlsWindow
 from .platform_utils import set_click_through, exclude_from_taskbar, set_capture_excluded
@@ -72,16 +73,46 @@ class NoIBeamLineEdit(QLineEdit):
         super().mouseMoveEvent(event)
 
 
+
 class NoIBeamTextEdit(QTextEdit):
     """
     QTextEdit that strictly preserves the standard ArrowCursor.
     Prevents the text editor viewport from showing an I-beam cursor.
     """
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAcceptRichText(True)
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+
+        self.md = MarkdownIt("default").enable([
+            "table",
+            "strikethrough"
+        ])
+
+    def insertFromMimeData(self, source):
+
+        # 1. If clipboard contains HTML, preserve rich formatting
+        if source.hasHtml():
+            super().insertFromMimeData(source)
+            return
+
+        # 2. If clipboard contains plain text, parse as Markdown
+        if source.hasText():
+            text = source.text()
+            html = self.md.render(text)
+
+            cursor = self.textCursor()
+            cursor.insertHtml(html)
+            self.setTextCursor(cursor)
+
+            self.ensureCursorVisible()
+            return
+
+        # 3. Fallback
+        super().insertFromMimeData(source)
+
 
     def enterEvent(self, event) -> None:
         self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -581,12 +612,14 @@ class MainWindow(QWidget):
         # If currently editing a note, sync title and editor content into active note
         if self._active_note_id and self.stacked_widget.currentIndex() == 1:
             content = self.editor.toPlainText()
+            content_html = self.editor.toHtml()
             custom_title = self.title_input.text().strip()
             effective_title = custom_title if custom_title else derive_note_title(content)
 
             for n in self._notes:
                 if n.get("id") == self._active_note_id:
                     n["content"] = content
+                    n["content_html"] = content_html  # NEW
                     n["custom_title"] = custom_title
                     n["title"] = effective_title
                     n["updated_at"] = datetime.now().strftime("%b %d, %H:%M")
@@ -655,9 +688,17 @@ class MainWindow(QWidget):
         self.title_input.setText(note.get("custom_title", ""))
         self.title_input.blockSignals(False)
 
-        # Populate note content
+        # Populate note content while preserving formatting
         self.editor.blockSignals(True)
-        self.editor.setPlainText(note.get("content", ""))
+
+        saved_html = note.get("content_html")
+
+        if saved_html:
+            self.editor.setHtml(saved_html)
+        else:
+            # Backward compatibility with old notes
+            self.editor.setPlainText(note.get("content", ""))
+
         self.editor.blockSignals(False)
 
         self.stacked_widget.setCurrentIndex(1)
@@ -678,6 +719,7 @@ class MainWindow(QWidget):
             "title": "Untitled Note",
             "custom_title": "",
             "content": "",
+            "content_html": "",
             "updated_at": now,
             "created_at": now,
         }
