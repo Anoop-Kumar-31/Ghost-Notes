@@ -31,6 +31,7 @@ DEFAULT_DATA: Dict[str, Any] = {
         "height": DEFAULT_HEIGHT,
     },
     "ghost_mode": False,
+    "ui_scale": 1.0,
 }
 
 
@@ -109,6 +110,11 @@ def load_data(storage_path: Optional[Path] = None) -> Dict[str, Any]:
         if "ghost_mode" in data and isinstance(data["ghost_mode"], bool):
             result["ghost_mode"] = data["ghost_mode"]
 
+        try:
+            result["ui_scale"] = max(0.8, min(1.4, float(data.get("ui_scale", 1.0))))
+        except (TypeError, ValueError):
+            result["ui_scale"] = 1.0
+
         if "geometry" in data and isinstance(data["geometry"], dict):
             geom = data["geometry"]
             result_geom = dict(DEFAULT_DATA["geometry"])
@@ -159,6 +165,7 @@ def save_data(data: Dict[str, Any], storage_path: Optional[Path] = None) -> bool
             "active_note_id": active_id,
             "view_mode": data.get("view_mode", "grid"),
             "current_view": data.get("current_view", "home"),
+            "ui_scale": max(0.8, min(1.4, float(data.get("ui_scale", 1.0)))) if data.get("ui_scale") is not None else 1.0,
             "geometry": {
                 "x": data.get("geometry", {}).get("x"),
                 "y": data.get("geometry", {}).get("y"),

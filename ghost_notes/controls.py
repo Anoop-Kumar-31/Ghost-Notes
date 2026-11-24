@@ -8,7 +8,7 @@ Runs in its own top-level window so it remains clickable when notes are click-th
 from typing import Optional
 from PySide6.QtCore import Qt, Signal, QRectF, QSize
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QAbstractButton
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QAbstractButton, QToolButton
 from .platform_utils import exclude_from_taskbar, set_capture_excluded
 
 
@@ -94,6 +94,8 @@ class ControlsWindow(QWidget):
 
     toggle_ghost_requested = Signal()
     close_requested = Signal()
+    zoom_in_requested = Signal()
+    zoom_out_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -109,6 +111,55 @@ class ControlsWindow(QWidget):
 
         # Requirement 13: strictly standard arrow cursor
         self.setCursor(Qt.CursorShape.ArrowCursor)
+
+        # Application UI zoom controls
+        self.zoom_out_btn = QToolButton(self)
+        self.zoom_out_btn.setText("−")
+        self.zoom_out_btn.setFixedSize(18, 18)
+        self.zoom_out_btn.setCursor(Qt.CursorShape.ArrowCursor)
+        self.zoom_out_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.zoom_out_btn.setStyleSheet("""
+            QToolButton {
+                color: #d4d4d8;
+                background: rgba(255, 255, 255, 14);
+                border: 1px solid rgba(255, 255, 255, 35);
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 0px;
+            }
+            QToolButton:hover {
+                background: rgba(59, 130, 246, 80);
+                color: white;
+            }
+        """)
+        self.zoom_out_btn.clicked.connect(
+            self.zoom_out_requested.emit
+        )
+
+        self.zoom_in_btn = QToolButton(self)
+        self.zoom_in_btn.setText("+")
+        self.zoom_in_btn.setFixedSize(18, 18)
+        self.zoom_in_btn.setCursor(Qt.CursorShape.ArrowCursor)
+        self.zoom_in_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.zoom_in_btn.setStyleSheet("""
+            QToolButton {
+                color: #d4d4d8;
+                background: rgba(255, 255, 255, 14);
+                border: 1px solid rgba(255, 255, 255, 35);
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 0px;
+            }
+            QToolButton:hover {
+                background: rgba(59, 130, 246, 80);
+                color: white;
+            }
+        """)
+        self.zoom_in_btn.clicked.connect(
+            self.zoom_in_requested.emit
+        )
 
         # Blue dot: 5x5 px centered in 18x18 hit target
         # Blue first
@@ -135,11 +186,16 @@ class ControlsWindow(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
+
+        # Zoom controls appear immediately before Ghost Mode and Exit
+        layout.addWidget(self.zoom_out_btn)
+        layout.addWidget(self.zoom_in_btn)
+
         layout.addWidget(self.blue_btn)
         layout.addWidget(self.red_btn)
 
-        # 18 + 2 + 18 = 38 px width, 18 px height
-        self.setFixedSize(38, 18)
+        # 4 x 18px buttons + 3 x 2px spacing
+        self.setFixedSize(78, 18)
 
     def set_ghost_state(self, active: bool) -> None:
         """Reflect ghost mode state on the blue button."""

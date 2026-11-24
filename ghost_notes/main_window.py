@@ -4,11 +4,11 @@ Frameless, translucent, always-on-top window supporting multiple notes,
 home page with responsive grid / list view, note editing with distinct title line,
 and a bottom-left Home button.
 """
-
+import re
 import uuid
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any
-from PySide6.QtCore import Qt, QPoint, QRect, QTimer, QSize, Signal
+from PySide6.QtCore import Qt, QPoint, QRect, QTimer, QSize, Signal, QEvent
 from PySide6.QtGui import (
     QGuiApplication,
     QKeySequence,
@@ -18,6 +18,15 @@ from PySide6.QtGui import (
     QBrush,
     QPen,
     QFont,
+    QIcon,
+    QPixmap,
+    QCursor,
+    QTextTable,
+    QTextCursor,
+    QTextCharFormat,
+    QTextBlockFormat,
+    QTextListFormat,
+    QTextTableFormat,
 )
 from PySide6.QtWidgets import (
     QWidget,
@@ -32,6 +41,12 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QScrollArea,
     QPushButton,
+    QToolButton,
+    QComboBox,
+    QSpinBox,
+    QColorDialog,
+    QInputDialog,
+    QMenu,
 )
 from markdown_it import MarkdownIt
 
@@ -45,6 +60,23 @@ from .persistence import (
     DEFAULT_HEIGHT,
 )
 
+def scale_stylesheet(stylesheet: str, scale: float) -> str:
+    """Scale all explicit px and pt font sizes in a Qt stylesheet."""
+
+    def replace_size(match):
+        original = float(match.group(2))
+        unit = match.group(3)
+
+        new_size = max(6, round(original * scale))
+
+        return f"{match.group(1)}{new_size}{unit}"
+
+    return re.sub(
+        r"(font-size\s*:\s*)(\d+(?:\.\d+)?)(px|pt)",
+        replace_size,
+        stylesheet,
+        flags=re.IGNORECASE,
+    )
 
 def derive_note_title(content: str) -> str:
     """Derive a friendly title from the first non-empty line of content."""
@@ -78,6 +110,7 @@ class NoIBeamTextEdit(QTextEdit):
     """
     QTextEdit that strictly preserves the standard ArrowCursor.
     Prevents the text editor viewport from showing an I-beam cursor.
+    Supports interactive + dot controls on table hover to add rows/columns.
     """
 
     def __init__(self, parent=None):
@@ -86,10 +119,167 @@ class NoIBeamTextEdit(QTextEdit):
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
 
-        self.md = MarkdownIt("default").enable([
-            "table",
-            "strikethrough"
-        ])
+        self.md = MarkdownIt("default").enable([ "table", "strikethrough"  ])
+
+        # Enable mouse tracking on viewport to detect table hover
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
+        self.viewport().installEventFilter(self)
+
+        # Floating + dot button for adding rows/columns to tables
+        self.table_add_btn = QToolButton(self.viewport())
+        self.table_add_btn.setText("+")
+        self.table_add_btn.setFixedSize(10, 10)
+        self.table_add_btn.setCursor(Qt.CursorShape.ArrowCursor)
+        self.table_add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.table_add_btn.setStyleSheet("""
+            QToolButton {
+                color: #000000;
+                background-color: #7590bd;
+                border: 0.5px solid rgba(255, 255, 255, 0.45);
+                border-radius: 100%;
+                font-size: 8px;
+                font-weight: bold;
+                padding: 0px;
+            }
+            QToolButton:hover {
+                background-color: #60a5fa;
+                border-color: #ffffff;
+            }
+        """)
+        self.table_add_btn.hide()
+        self._current_table_action = None
+        self.table_add_btn.clicked.connect(self._on_table_add_clicked)
+
+        self.verticalScrollBar().valueChanged.connect(self._on_editor_scrolled)
+        self.horizontalScrollBar().valueChanged.connect(self._on_editor_scrolled)
+
+    def _on_table_add_clicked(self):
+        if self._current_table_action:
+            action = self._current_table_action
+            self._current_table_action = None
+            self.table_add_btn.hide()
+            action()
+
+    def _on_editor_scrolled(self):
+        if self.table_add_btn.isVisible():
+            self._update_table_add_hover(self.viewport().mapFromGlobal(QCursor.pos()))
+
+    def eventFilter(self, watched, event):
+        if watched == self.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+                self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+                self._update_table_add_hover(event.pos())
+            elif event.type() == QEvent.Type.Leave:
+                if not self.table_add_btn.underMouse():
+                    self.table_add_btn.hide()
+                    self._current_table_action = None
+        return super().eventFilter(watched, event)
+
+    def _update_table_add_hover(self, pos):
+        # Keep button visible if mouse is hovering directly on the button or within 4px of it
+        if self.table_add_btn.isVisible() and self.table_add_btn.geometry().adjusted(-4, -4, 4, 4).contains(pos):
+            return
+
+        doc = self.document()
+        if not doc:
+            self.table_add_btn.hide()
+            return
+
+        doc_layout = doc.documentLayout()
+        root = doc.rootFrame()
+        if not root:
+            self.table_add_btn.hide()
+            return
+
+        tables = []
+        def _collect(frame):
+            for child in frame.childFrames():
+                if isinstance(child, QTextTable):
+                    tables.append(child)
+                _collect(child)
+        _collect(root)
+
+        if not tables:
+            self.table_add_btn.hide()
+            self._current_table_action = None
+            return
+
+        scroll_x = self.horizontalScrollBar().value()
+        scroll_y = self.verticalScrollBar().value()
+        px = pos.x()
+        py = pos.y()
+
+        hit_threshold = 14
+
+        for tbl in tables:
+            f_rect = doc_layout.frameBoundingRect(tbl)
+            vx = f_rect.x() - scroll_x
+            vy = f_rect.y() - scroll_y
+            vw = f_rect.width()
+            vh = f_rect.height()
+
+            # Fast boundary check around this table (expanded by 20px)
+            if not (vx - 20 <= px <= vx + vw + 20 and vy - 20 <= py <= vy + vh + 20):
+                continue
+
+            # 1. Top border: add row at top
+            if abs(py - vy) <= hit_threshold and (vx - 6 <= px <= vx + vw + 6):
+                self.table_add_btn.move(int(vx + vw / 2 - 8), int(max(2, vy - 8)))
+                self._current_table_action = lambda t=tbl: self._add_table_row(t, 0)
+                self.table_add_btn.setToolTip("Add row at top")
+                self.table_add_btn.show()
+                self.table_add_btn.raise_()
+                return
+
+            # 2. Bottom border: add row at bottom
+            if abs(py - (vy + vh)) <= hit_threshold and (vx - 6 <= px <= vx + vw + 6):
+                self.table_add_btn.move(int(vx + vw / 2 - 8), int(min(self.viewport().height() - 18, vy + vh - 8)))
+                self._current_table_action = lambda t=tbl: self._add_table_row(t, t.rows())
+                self.table_add_btn.setToolTip("Add row at bottom")
+                self.table_add_btn.show()
+                self.table_add_btn.raise_()
+                return
+
+            # 3. Left border: add column at left
+            if abs(px - vx) <= hit_threshold and (vy - 6 <= py <= vy + vh + 6):
+                self.table_add_btn.move(int(max(2, vx - 8)), int(vy + vh / 2 - 8))
+                self._current_table_action = lambda t=tbl: self._add_table_column(t, 0)
+                self.table_add_btn.setToolTip("Add column at left")
+                self.table_add_btn.show()
+                self.table_add_btn.raise_()
+                return
+
+            # 4. Right border: add column at right
+            if abs(px - (vx + vw)) <= hit_threshold and (vy - 6 <= py <= vy + vh + 6):
+                self.table_add_btn.move(int(min(self.viewport().width() - 18, vx + vw - 8)), int(vy + vh / 2 - 8))
+                self._current_table_action = lambda t=tbl: self._add_table_column(t, t.columns())
+                self.table_add_btn.setToolTip("Add column at right")
+                self.table_add_btn.show()
+                self.table_add_btn.raise_()
+                return
+
+        self.table_add_btn.hide()
+        self._current_table_action = None
+
+    def _add_table_row(self, table, index):
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        table.insertRows(index, 1)
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
+        self.setFocus()
+        self.textChanged.emit()
+
+    def _add_table_column(self, table, index):
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        table.insertColumns(index, 1)
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
+        self.setFocus()
+        self.textChanged.emit()
 
     def insertFromMimeData(self, source):
 
@@ -156,7 +346,7 @@ class NoteCard(QFrame):
     clicked = Signal(str)
     delete_requested = Signal(str)
 
-    def __init__(self, note: Dict[str, Any], is_list_view: bool = False, parent: Optional[QWidget] = None):
+    def __init__(self, note: Dict[str, Any], is_list_view: bool = False, parent: Optional[QWidget] = None, ui_scale: float=1.0):
         super().__init__(parent)
         self.note_id = str(note.get("id", ""))
         self.is_list_view = is_list_view
@@ -176,7 +366,7 @@ class NoteCard(QFrame):
             snippet = snippet[:57] + "..."
 
         self.setStyleSheet(
-            """
+            scale_stylesheet("""
             QFrame#NoteCard {
                 background-color: rgba(39, 39, 42, 0.7);
                 border: 1px solid rgba(255, 255, 255, 0.08);
@@ -186,7 +376,7 @@ class NoteCard(QFrame):
                 background-color: rgba(59, 130, 246, 0.15);
                 border: 1px solid rgba(59, 130, 246, 0.4);
             }
-            """
+            """, ui_scale)
         )
         self.setObjectName("NoteCard")
 
@@ -201,7 +391,7 @@ class NoteCard(QFrame):
 
         self.title_lbl = QLabel(title, self)
         self.title_lbl.setCursor(Qt.CursorShape.ArrowCursor)
-        self.title_lbl.setStyleSheet("color: #f4f4f5; font-size: 11px; font-weight: 700; background: transparent;")
+        self.title_lbl.setStyleSheet(scale_stylesheet("color: #f4f4f5; font-size: 11px; font-weight: 700; background: transparent;", ui_scale))
         top_row.addWidget(self.title_lbl)
         top_row.addStretch()
 
@@ -232,14 +422,14 @@ class NoteCard(QFrame):
         self.snippet_lbl = QLabel(snippet, self)
         self.snippet_lbl.setCursor(Qt.CursorShape.ArrowCursor)
         self.snippet_lbl.setWordWrap(True)
-        self.snippet_lbl.setStyleSheet("color: #a1a1aa; font-size: 10px; background: transparent;")
+        self.snippet_lbl.setStyleSheet(scale_stylesheet("color: #a1a1aa; font-size: 10px; background: transparent;", ui_scale))
         layout.addWidget(self.snippet_lbl)
 
         # Footer row: Date
         if date_str:
             self.date_lbl = QLabel(date_str, self)
             self.date_lbl.setCursor(Qt.CursorShape.ArrowCursor)
-            self.date_lbl.setStyleSheet("color: #71717a; font-size: 9px; background: transparent;")
+            self.date_lbl.setStyleSheet(scale_stylesheet("color: #71717a; font-size: 9px; background: transparent;", ui_scale))
             layout.addWidget(self.date_lbl)
 
         if not is_list_view:
@@ -277,6 +467,8 @@ class MainWindow(QWidget):
         self._resize_start_pos = QPoint()
         self._resize_start_geom = QRect()
 
+        self._ui_scale = 1.0
+
         # State
         self._notes: List[Dict[str, Any]] = []
         self._active_note_id: Optional[str] = None
@@ -301,13 +493,18 @@ class MainWindow(QWidget):
         # Build UI layout
         self._init_ui()
 
+        self._base_stylesheet = self.styleSheet()
+
         # Keyboard shortcuts
         self._setup_shortcuts()
 
         # Independent controls window (Blue & Red micro-dots)
         self.controls = ControlsWindow()
+
         self.controls.toggle_ghost_requested.connect(self.toggle_ghost_mode)
         self.controls.close_requested.connect(self.close_application)
+        self.controls.zoom_in_requested.connect(lambda: self._change_ui_scale(0.1))
+        self.controls.zoom_out_requested.connect(lambda: self._change_ui_scale(-0.1))
 
         # Load persisted data
         self._load_state()
@@ -510,10 +707,16 @@ class MainWindow(QWidget):
         detail_layout.addWidget(self.title_input)
 
         self.editor = NoIBeamTextEdit(self.detail_widget)
-        self.editor.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
-        self.editor.setPlaceholderText("Type your notes here... (Ctrl+S to save, Ctrl+Shift+N to clear)")
+        self.editor.setLineWrapMode( QTextEdit.LineWrapMode.WidgetWidth )
+        self.editor.setAcceptRichText(True)
+        self.editor.setPlaceholderText( "Type your notes here... (Ctrl+S to save, Ctrl+Shift+N to clear)" )
         self.editor.textChanged.connect(self._on_text_changed)
-        detail_layout.addWidget(self.editor)
+
+        # Editor expands to consume the available vertical space
+        detail_layout.addWidget(self.editor, 1)
+
+        # Formatting toolbar directly below the editor
+        self._build_format_toolbar(detail_layout)
         self.stacked_widget.addWidget(self.detail_widget)
 
         container_layout.addWidget(self.stacked_widget)
@@ -534,6 +737,824 @@ class MainWindow(QWidget):
         self.resize_grip = ResizeGrip(self.container)
         bottom_row.addWidget(self.resize_grip)
         container_layout.addLayout(bottom_row)
+
+    def _change_ui_scale(self, amount: float):
+        """Increase/decrease application interface font scale."""
+
+        self._ui_scale = round(
+            max(0.8, min(1.4, self._ui_scale + amount)),
+            2
+        )
+
+        self._apply_ui_scale()
+        self._save_timer.start()
+
+
+    def _apply_ui_scale(self):
+        """Apply the saved font scale to application stylesheets."""
+
+        self.setStyleSheet(
+            scale_stylesheet(
+                self._base_stylesheet,
+                self._ui_scale
+            )
+        )
+
+        if hasattr(self, "_toolbar_base_stylesheet"):
+            self.format_toolbar.setStyleSheet(
+                scale_stylesheet(
+                    self._toolbar_base_stylesheet,
+                    self._ui_scale
+                )
+            )
+
+        # Refresh cards so their local font styles are also scaled
+        if (
+            hasattr(self, "stacked_widget")
+            and self.stacked_widget.currentIndex() == 0
+        ):
+            self._render_notes_list()
+
+    def _make_format_button(
+        self,
+        label: str,
+        callback=None,
+        checkable: bool = False,
+        tooltip: str = "",
+        width: int = 22,
+    ) -> QToolButton:
+        button = QToolButton(self.format_toolbar)
+        button.setText(label)
+        button.setCheckable(checkable)
+        button.setCursor(Qt.CursorShape.ArrowCursor)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setFixedSize(width, 22)
+        if tooltip:
+            button.setToolTip(tooltip)
+        if callback:
+            button.clicked.connect(callback)
+        return button
+
+    def _make_toolbar_divider(self) -> QFrame:
+        div = QFrame(self.format_toolbar)
+        div.setFrameShape(QFrame.Shape.VLine)
+        div.setFixedWidth(1)
+        div.setFixedHeight(12)
+        div.setStyleSheet("background-color: rgba(255, 255, 255, 0.12); border: none;")
+        return div
+
+    def _create_table_matrix_icon(self) -> QIcon:
+        """Create a crisp 2x2 matrix icon composed of 4 squares."""
+        def _render_pixmap(color_hex: str) -> QPixmap:
+            pix = QPixmap(16, 16)
+            pix.fill(Qt.transparent)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            pen = QPen(QColor(color_hex), 1)
+            p.setPen(pen)
+            p.setBrush(Qt.NoBrush)
+            # 4 distinct squares arranged in a 2x2 matrix
+            p.drawRect(2, 2, 5, 5)
+            p.drawRect(9, 2, 5, 5)
+            p.drawRect(2, 9, 5, 5)
+            p.drawRect(9, 9, 5, 5)
+            p.end()
+            return pix
+
+        icon = QIcon()
+        icon.addPixmap(_render_pixmap("#a1a1aa"), QIcon.Mode.Normal, QIcon.State.Off)
+        icon.addPixmap(_render_pixmap("#60a5fa"), QIcon.Mode.Normal, QIcon.State.On)
+        icon.addPixmap(_render_pixmap("#ffffff"), QIcon.Mode.Active)
+        return icon
+
+    def _build_format_toolbar(self, detail_layout):
+
+        self.format_toolbar = QFrame(self.detail_widget)
+        self.format_toolbar.setObjectName("FormatToolbar")
+
+        outer = QVBoxLayout(self.format_toolbar)
+        outer.setContentsMargins(6, 4, 6, 4)
+        outer.setSpacing(3)
+
+        # ---------------- ROW 1: Paragraph, Font Family, Font Size ----------------
+
+        row1 = QHBoxLayout()
+        row1.setContentsMargins(0, 0, 0, 0)
+        row1.setSpacing(4)
+
+        self.paragraph_combo = QComboBox(self.format_toolbar)
+        self.paragraph_combo.addItems(["Normal", "Heading 1", "Heading 2", "Heading 3", "Quote"])
+        self.paragraph_combo.setFixedWidth(82)
+        self.paragraph_combo.setFixedHeight(22)
+        self.paragraph_combo.setCursor(Qt.CursorShape.ArrowCursor)
+        self.paragraph_combo.setToolTip("Paragraph style")
+        self.paragraph_combo.currentTextChanged.connect(self._set_paragraph_style)
+
+        self.font_combo = QComboBox(self.format_toolbar)
+        self.font_combo.setEditable(False)
+        self.font_combo.addItems(["Segoe UI", "Arial", "Consolas", "Times New Roman", "Georgia"])
+        self.font_combo.setCurrentText("Segoe UI")
+        self.font_combo.setFixedWidth(88)
+        self.font_combo.setFixedHeight(22)
+        self.font_combo.setCursor(Qt.CursorShape.ArrowCursor)
+        self.font_combo.setToolTip("Font family")
+        self.font_combo.currentTextChanged.connect(self._set_font_family)
+
+        row1.addWidget(self.paragraph_combo)
+        row1.addWidget(self.font_combo)
+        row1.addWidget(self._make_toolbar_divider())
+
+        # Size Stepper
+        self.font_size_down = self._make_format_button(
+            "−", lambda: self._adjust_font_size(-1), tooltip="Decrease font size", width=20
+        )
+
+        self.font_size_spin = QSpinBox(self.format_toolbar)
+        self.font_size_spin.setRange(6, 72)
+        self.font_size_spin.setValue(13)
+        self.font_size_spin.setSuffix(" pt")
+        self.font_size_spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.font_size_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.font_size_spin.setFixedSize(48, 22)
+        self.font_size_spin.setCursor(Qt.CursorShape.ArrowCursor)
+        self.font_size_spin.setToolTip("Font size")
+        self.font_size_spin.valueChanged.connect(self._set_font_size)
+
+        self.font_size_up = self._make_format_button(
+            "+", lambda: self._adjust_font_size(1), tooltip="Increase font size", width=20
+        )
+
+        row1.addWidget(self.font_size_down)
+        row1.addWidget(self.font_size_spin)
+        row1.addWidget(self.font_size_up)
+        row1.addStretch()
+
+        outer.addLayout(row1)
+
+        # ---------------- ROW 2: Formatting buttons ----------------
+
+        row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 0, 0, 0)
+        row2.setSpacing(2)
+
+        self.bold_btn = self._make_format_button("B", self._toggle_bold, True, "Bold (Ctrl+B)")
+        self.italic_btn = self._make_format_button("I", self._toggle_italic, True, "Italic (Ctrl+I)")
+        self.underline_btn = self._make_format_button("U", self._toggle_underline, True, "Underline (Ctrl+U)")
+        self.strike_btn = self._make_format_button("S", self._toggle_strike, True, "Strikethrough")
+
+        for button in (self.bold_btn, self.italic_btn, self.underline_btn, self.strike_btn):
+            row2.addWidget(button)
+
+        row2.addWidget(self._make_toolbar_divider())
+
+        self.bullet_btn = self._make_format_button(
+            "•", lambda: self._insert_list(QTextListFormat.Style.ListDisc), checkable=True, tooltip="Bulleted list"
+        )
+        self.number_btn = self._make_format_button(
+            "1.", lambda: self._insert_list(QTextListFormat.Style.ListDecimal), checkable=True, tooltip="Numbered list"
+        )
+        self.checklist_btn = self._make_format_button(
+            "☑", self._insert_checklist_item, checkable=True, tooltip="Checklist item"
+        )
+
+        for button in (self.bullet_btn, self.number_btn, self.checklist_btn):
+            row2.addWidget(button)
+
+        row2.addWidget(self._make_toolbar_divider())
+
+        self.table_btn = self._make_format_button("", self._insert_table, checkable=True, tooltip="Insert table")
+        self.table_btn.setIcon(self._create_table_matrix_icon())
+        self.table_btn.setIconSize(QSize(16, 16))
+        self.code_btn = self._make_format_button("</>", self._insert_code_block, checkable=True, tooltip="Code block", width=24)
+
+        row2.addWidget(self.table_btn)
+        row2.addWidget(self.code_btn)
+
+        row2.addWidget(self._make_toolbar_divider())
+
+        self.more_btn = QToolButton(self.format_toolbar)
+        self.more_btn.setText("⋯")
+        self.more_btn.setToolTip("More formatting options")
+        self.more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.more_btn.setCursor(Qt.CursorShape.ArrowCursor)
+        self.more_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.more_btn.setFixedSize(22, 22)
+
+        self.more_menu = QMenu(self.more_btn)
+        self.more_menu.setCursor(Qt.CursorShape.ArrowCursor)
+
+        self.more_menu.addAction("Text colour...", self._choose_text_color)
+        self.more_menu.addAction("Highlight colour...", self._choose_highlight_color)
+        self.more_menu.addAction("Insert hyperlink...", self._insert_link)
+
+        alignment_menu = self.more_menu.addMenu("Alignment")
+        alignment_menu.setCursor(Qt.CursorShape.ArrowCursor)
+
+        alignment_menu.addAction("Left", lambda: self.editor.setAlignment(Qt.AlignmentFlag.AlignLeft))
+        alignment_menu.addAction("Centre", lambda: self.editor.setAlignment(Qt.AlignmentFlag.AlignHCenter))
+        alignment_menu.addAction("Right", lambda: self.editor.setAlignment(Qt.AlignmentFlag.AlignRight))
+        alignment_menu.addAction("Justify", lambda: self.editor.setAlignment(Qt.AlignmentFlag.AlignJustify))
+
+        self.more_menu.addSeparator()
+        self.more_menu.addAction("Insert horizontal divider", self._insert_horizontal_divider)
+        self.more_menu.addAction("Clear formatting", self._clear_formatting)
+        self.more_menu.addSeparator()
+        self.more_menu.addAction("Undo", self.editor.undo)
+        self.more_menu.addAction("Redo", self.editor.redo)
+
+        row2.addWidget(self.more_btn)
+        row2.addStretch()
+
+        outer.addLayout(row2)
+
+        # Toolbar styling
+        self.format_toolbar.setStyleSheet("""
+            QFrame#FormatToolbar {
+                background-color: rgba(24, 24, 27, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+            }
+
+            QFrame#FormatToolbar QToolButton {
+                color: #a1a1aa;
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 0px;
+            }
+
+            QFrame#FormatToolbar QToolButton:hover {
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                color: #ffffff;
+            }
+
+            QFrame#FormatToolbar QToolButton:checked {
+                background: rgba(59, 130, 246, 0.25);
+                border: 1px solid rgba(59, 130, 246, 0.6);
+                color: #60a5fa;
+            }
+
+            QFrame#FormatToolbar QComboBox {
+                color: #e4e4e7;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+                padding-left: 6px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+
+            QFrame#FormatToolbar QComboBox:hover {
+                background: rgba(255, 255, 255, 0.09);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+
+            QFrame#FormatToolbar QComboBox QAbstractItemView {
+                color: #f4f4f5;
+                background: #27272a;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 6px;
+                selection-background-color: #3b82f6;
+                selection-color: #ffffff;
+                padding: 2px;
+            }
+
+            QFrame#FormatToolbar QSpinBox {
+                color: #f4f4f5;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+
+            QFrame#FormatToolbar QSpinBox:hover {
+                background: rgba(255, 255, 255, 0.09);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+
+            QFrame#FormatToolbar QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 0px;
+                height: 0px;
+                border: none;
+            }
+
+            QFrame#FormatToolbar QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 0px;
+                height: 0px;
+                border: none;
+            }
+
+            QMenu {
+                background-color: #1c1c1f;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                padding: 4px;
+                color: #e4e4e7;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 4px 16px 4px 8px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #3b82f6;
+                color: #ffffff;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: rgba(255, 255, 255, 0.08);
+                margin: 4px 2px;
+            }
+        """)
+
+        self._toolbar_base_stylesheet = (
+            self.format_toolbar.styleSheet()
+        )
+
+        self.editor.cursorPositionChanged.connect(
+            self._sync_format_toolbar)
+
+        # Insert toolbar after editor
+        detail_layout.addWidget(self.format_toolbar)
+
+    
+    # ---------------- TEXT FORMATTING ----------------
+
+    def _apply_char_format(self, fmt: QTextCharFormat):
+        self.editor.mergeCurrentCharFormat(fmt)
+        self.editor.setFocus()
+
+
+    def _toggle_bold(self, checked=False):
+        fmt = QTextCharFormat()
+        fmt.setFontWeight(
+            QFont.Weight.Bold if checked else QFont.Weight.Normal
+        )
+        self._apply_char_format(fmt)
+
+
+    def _toggle_italic(self, checked=False):
+        fmt = QTextCharFormat()
+        fmt.setFontItalic(checked)
+        self._apply_char_format(fmt)
+
+
+    def _toggle_underline(self, checked=False):
+        fmt = QTextCharFormat()
+        fmt.setFontUnderline(checked)
+        self._apply_char_format(fmt)
+
+
+    def _toggle_strike(self, checked=False):
+        fmt = QTextCharFormat()
+        fmt.setFontStrikeOut(checked)
+        self._apply_char_format(fmt)
+
+
+    def _set_font_size(self, size):
+        fmt = QTextCharFormat()
+        fmt.setFontPointSize(float(size))
+        self._apply_char_format(fmt)
+
+
+    def _adjust_font_size(self, amount):
+        new_size = max(
+            6,
+            min(72, self.font_size_spin.value() + amount)
+        )
+        self.font_size_spin.setValue(new_size)
+
+
+    def _set_font_family(self, family):
+        if not family.strip():
+            return
+
+        fmt = QTextCharFormat()
+        fmt.setFontFamily(family)
+        self._apply_char_format(fmt)
+
+
+    # ---------------- HEADINGS ----------------
+
+    def _set_paragraph_style(self, style):
+
+        sizes = {
+            "Normal": 13,
+            "Heading 1": 22,
+            "Heading 2": 18,
+            "Heading 3": 15,
+            "Quote": 13,
+        }
+
+        size = sizes.get(style, 13)
+
+        cursor = self.editor.textCursor()
+
+        block_fmt = QTextBlockFormat()
+        char_fmt = QTextCharFormat()
+
+        block_fmt.setTopMargin(6)
+        block_fmt.setBottomMargin(6)
+
+        if style == "Quote":
+            block_fmt.setLeftMargin(16)
+            char_fmt.setFontItalic(True)
+            char_fmt.setForeground(QColor("#a1a1aa"))
+
+        else:
+            block_fmt.setLeftMargin(0)
+            char_fmt.setFontWeight(
+                QFont.Weight.Bold
+                if style != "Normal"
+                else QFont.Weight.Normal
+            )
+
+        char_fmt.setFontPointSize(size)
+
+        cursor.beginEditBlock()
+        cursor.mergeBlockFormat(block_fmt)
+        cursor.mergeCharFormat(char_fmt)
+        cursor.endEditBlock()
+
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+
+
+    # ---------------- LISTS ----------------
+
+    def _insert_list(self, list_style):
+
+        cursor = self.editor.textCursor()
+        current_list = cursor.currentList()
+        block = cursor.block()
+        line_text = block.text()
+
+        # If already in a list of this style, toggle off
+        if current_list and current_list.format().style() == list_style:
+            current_list.removeItem(current_list.itemNumber(block))
+            block_format = QTextBlockFormat()
+            block_format.setIndent(0)
+            cursor.setBlockFormat(block_format)
+            self.editor.setTextCursor(cursor)
+            self.editor.setFocus()
+            self._sync_format_toolbar()
+            return
+
+        # If plain text bullet and bullet was clicked, remove prefix
+        stripped = line_text.lstrip()
+        if list_style == QTextListFormat.Style.ListDisc and stripped.startswith(("• ", "- ", "* ")):
+            leading_spaces = len(line_text) - len(stripped)
+            cursor.beginEditBlock()
+            cursor.setPosition(block.position() + leading_spaces)
+            cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 2)
+            cursor.removeSelectedText()
+            cursor.endEditBlock()
+            self.editor.setTextCursor(cursor)
+            self.editor.setFocus()
+            self._sync_format_toolbar()
+            return
+
+        # If plain text numbered list and number was clicked, remove prefix
+        if list_style == QTextListFormat.Style.ListDecimal:
+            m = re.match(r"^(\d+[\.\)]\s)", stripped)
+            if m:
+                leading_spaces = len(line_text) - len(stripped)
+                cursor.beginEditBlock()
+                cursor.setPosition(block.position() + leading_spaces)
+                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, len(m.group(1)))
+                cursor.removeSelectedText()
+                cursor.endEditBlock()
+                self.editor.setTextCursor(cursor)
+                self.editor.setFocus()
+                self._sync_format_toolbar()
+                return
+
+        list_format = QTextListFormat()
+        list_format.setStyle(list_style)
+        list_format.setIndent(1)
+
+        cursor.createList(list_format)
+
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+        self._sync_format_toolbar()
+
+
+    def _insert_checklist_item(self):
+
+        cursor = self.editor.textCursor()
+        block = cursor.block()
+        existing = block.text()
+        stripped = existing.lstrip()
+        leading_spaces = len(existing) - len(stripped)
+
+        cursor.beginEditBlock()
+        cursor.setPosition(block.position() + leading_spaces)
+
+        if stripped.startswith("☐ "):
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Right,
+                QTextCursor.MoveMode.KeepAnchor,
+                2
+            )
+            cursor.insertText("☑ ")
+
+        elif stripped.startswith("☑ "):
+            # Toggle off checklist item
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Right,
+                QTextCursor.MoveMode.KeepAnchor,
+                2
+            )
+            cursor.removeSelectedText()
+
+        elif stripped.startswith(("[ ] ", "[x] ", "[X] ")):
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Right,
+                QTextCursor.MoveMode.KeepAnchor,
+                4
+            )
+            cursor.removeSelectedText()
+
+        else:
+            cursor.insertText("☐ ")
+
+        cursor.endEditBlock()
+
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+        self._sync_format_toolbar()
+
+
+    # ---------------- COLOURS ----------------
+
+    def _choose_text_color(self):
+
+        color = QColorDialog.getColor(
+            QColor("#f4f4f5"),
+            self,
+            "Choose Text Colour"
+        )
+
+        if color.isValid():
+            fmt = QTextCharFormat()
+            fmt.setForeground(QBrush(color))
+            self._apply_char_format(fmt)
+
+
+    def _choose_highlight_color(self):
+
+        color = QColorDialog.getColor(
+            QColor("#854d0e"),
+            self,
+            "Choose Highlight Colour"
+        )
+
+        if color.isValid():
+            fmt = QTextCharFormat()
+            fmt.setBackground(QBrush(color))
+            self._apply_char_format(fmt)
+
+
+    # ---------------- TABLE ----------------
+
+    def _insert_table(self):
+
+        cursor = self.editor.textCursor()
+        table = cursor.currentTable()
+
+        # If already inside a table, add another row to it
+        if table:
+            table.appendRows(1)
+            self.editor.setTextCursor(cursor)
+            self.editor.setFocus()
+            self._sync_format_toolbar()
+            return
+
+        # Insert a clean 1 row, 2 columns table without blocking modal dialogs
+        table_format = QTextTableFormat()
+        table_format.setBorder(1)
+        table_format.setCellPadding(6)
+        table_format.setCellSpacing(0)
+        table_format.setBorderBrush(
+            QBrush(QColor("#52525b"))
+        )
+        table_format.setBackground(
+            QBrush(QColor("#27272a"))
+        )
+
+        cursor.insertTable(1, 2, table_format)
+
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+        self._sync_format_toolbar()
+
+
+    # ---------------- CODE BLOCK ----------------
+
+    def _insert_code_block(self):
+
+        cursor = self.editor.textCursor()
+        block = cursor.block()
+        is_code = (
+            block.blockFormat().background().color() == QColor("#27272a")
+            or cursor.charFormat().font().family() in ("Consolas", "Courier New", "monospace")
+        )
+
+        cursor.beginEditBlock()
+
+        if is_code:
+            # Revert code block formatting back to normal
+            normal_block_fmt = QTextBlockFormat()
+            normal_char_fmt = QTextCharFormat()
+            normal_char_fmt.setFontFamily(self.font_combo.currentText() or "Segoe UI")
+            normal_char_fmt.setFontPointSize(self.font_size_spin.value() or 13)
+            normal_char_fmt.setForeground(QColor("#f4f4f5"))
+            cursor.setBlockFormat(normal_block_fmt)
+            cursor.setCharFormat(normal_char_fmt)
+        else:
+            block_format = QTextBlockFormat()
+            block_format.setBackground(
+                QBrush(QColor("#27272a"))
+            )
+            block_format.setLeftMargin(8)
+            block_format.setRightMargin(8)
+            block_format.setTopMargin(5)
+            block_format.setBottomMargin(5)
+
+            char_format = QTextCharFormat()
+            char_format.setFontFamily("Consolas")
+            char_format.setFontPointSize(10)
+            char_format.setForeground(
+                QColor("#e4e4e7")
+            )
+
+            if not cursor.hasSelection() and block.text().strip():
+                cursor.insertBlock(
+                    block_format,
+                    char_format
+                )
+            else:
+                cursor.mergeBlockFormat(block_format)
+                cursor.mergeCharFormat(char_format)
+
+        cursor.endEditBlock()
+
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+        self._sync_format_toolbar()
+
+
+    # ---------------- HYPERLINK ----------------
+
+    def _insert_link(self):
+
+        cursor = self.editor.textCursor()
+
+        url, ok = QInputDialog.getText(
+            self,
+            "Insert Hyperlink",
+            "Enter URL:"
+        )
+
+        if not ok or not url.strip():
+            return
+
+        fmt = QTextCharFormat()
+        fmt.setAnchor(True)
+        fmt.setAnchorHref(url.strip())
+        fmt.setForeground(QBrush(QColor("#60a5fa")))
+        fmt.setFontUnderline(True)
+
+        if cursor.hasSelection():
+            cursor.mergeCharFormat(fmt)
+        else:
+            cursor.insertText(url.strip(), fmt)
+
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+
+
+    # ---------------- DIVIDER ----------------
+
+    def _insert_horizontal_divider(self):
+
+        cursor = self.editor.textCursor()
+        cursor.insertBlock()
+
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor("#71717a"))
+
+        cursor.insertText(
+            "────────────────────────",
+            fmt
+        )
+
+        cursor.insertBlock()
+        self.editor.setTextCursor(cursor)
+
+
+    # ---------------- CLEAR FORMATTING ----------------
+
+    def _clear_formatting(self):
+
+        cursor = self.editor.textCursor()
+
+        cursor.beginEditBlock()
+        cursor.setCharFormat(QTextCharFormat())
+        cursor.setBlockFormat(QTextBlockFormat())
+        cursor.endEditBlock()
+
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+
+    def _sync_format_toolbar(self):
+
+        cursor = self.editor.textCursor()
+        fmt = self.editor.currentCharFormat()
+        block = cursor.block()
+        block_text = block.text()
+        block_fmt = block.blockFormat()
+        current_list = cursor.currentList()
+
+        # Character formats (Bold, Italic, Underline, Strike)
+        self.bold_btn.setChecked(fmt.fontWeight() >= QFont.Weight.Bold)
+        self.italic_btn.setChecked(fmt.fontItalic())
+        self.underline_btn.setChecked(fmt.fontUnderline())
+        self.strike_btn.setChecked(fmt.fontStrikeOut())
+
+        # Unordered & Ordered Lists
+        is_bullet = False
+        is_ordered = False
+        if current_list:
+            style = current_list.format().style()
+            if style in (
+                QTextListFormat.Style.ListDisc,
+                QTextListFormat.Style.ListCircle,
+                QTextListFormat.Style.ListSquare,
+            ):
+                is_bullet = True
+            elif style in (
+                QTextListFormat.Style.ListDecimal,
+                QTextListFormat.Style.ListLowerAlpha,
+                QTextListFormat.Style.ListUpperAlpha,
+                QTextListFormat.Style.ListLowerRoman,
+                QTextListFormat.Style.ListUpperRoman,
+            ):
+                is_ordered = True
+        else:
+            stripped = block_text.lstrip()
+            if stripped.startswith(("•", "-", "* ")) and not stripped.startswith(("---", "***", "___")):
+                is_bullet = True
+            elif re.match(r"^\d+[\.\)]\s", stripped):
+                is_ordered = True
+
+        self.bullet_btn.setChecked(is_bullet)
+        self.number_btn.setChecked(is_ordered)
+
+        # Checklist (☐ or ☑)
+        is_checklist = block_text.lstrip().startswith(("☐", "☑", "[ ]", "[x]", "[X]"))
+        self.checklist_btn.setChecked(is_checklist)
+
+        # Table
+        is_table = cursor.currentTable() is not None
+        self.table_btn.setChecked(is_table)
+
+        # Code block
+        is_code = (
+            block_fmt.background().color() == QColor("#27272a")
+            or fmt.font().family() in ("Consolas", "Courier New", "monospace")
+        )
+        self.code_btn.setChecked(is_code)
+
+        # Font size spin
+        size = fmt.fontPointSize()
+        if size <= 0:
+            size = 13
+
+        self.font_size_spin.blockSignals(True)
+        self.font_size_spin.setValue(max(6, min(72, round(size))))
+        self.font_size_spin.blockSignals(False)
+
+        # Font family combo
+        self.font_combo.blockSignals(True)
+        fams = fmt.fontFamilies()
+        family = fams[0] if (fams and isinstance(fams, (list, tuple))) else ""
+        if family:
+            idx = self.font_combo.findText(family, Qt.MatchFlag.MatchFixedString)
+            if idx >= 0:
+                self.font_combo.setCurrentIndex(idx)
+        self.font_combo.blockSignals(False)
+
+
 
     def _setup_shortcuts(self) -> None:
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
@@ -564,6 +1585,11 @@ class MainWindow(QWidget):
         self._notes = data.get("notes", [])
         self._active_note_id = data.get("active_note_id")
         self._view_mode = data.get("view_mode", "grid")
+        try:
+            self._ui_scale = max(0.8, min(1.4, float(data.get("ui_scale", 1.0))))
+        except (TypeError, ValueError):
+            self._ui_scale = 1.0
+        self._apply_ui_scale()
         current_view = data.get("current_view", "home")
 
         # If no notes exist, provide one initial note
@@ -593,9 +1619,7 @@ class MainWindow(QWidget):
         gw = geom_data.get("width", DEFAULT_WIDTH)
         gh = geom_data.get("height", DEFAULT_HEIGHT)
 
-        sanitized_x, sanitized_y, sanitized_w, sanitized_h = sanitize_geometry(
-            gx, gy, gw, gh, screen_rects
-        )
+        sanitized_x, sanitized_y, sanitized_w, sanitized_h = sanitize_geometry(gx, gy, gw, gh, screen_rects)
         self.setGeometry(sanitized_x, sanitized_y, sanitized_w, sanitized_h)
 
         if current_view == "note" and self._active_note_id:
@@ -639,6 +1663,7 @@ class MainWindow(QWidget):
             "active_note_id": self._active_note_id,
             "view_mode": self._view_mode,
             "current_view": current_view_str,
+            "ui_scale": self._ui_scale,
             "geometry": {
                 "x": geom.x(),
                 "y": geom.y(),
@@ -780,7 +1805,7 @@ class MainWindow(QWidget):
             grid.setSpacing(8)
 
             for idx, note in enumerate(self._notes):
-                card = NoteCard(note, is_list_view=False, parent=self.home_content)
+                card = NoteCard(note, is_list_view=False, parent=self.home_content, ui_scale=self._ui_scale)
                 card.clicked.connect(self.open_note)
                 card.delete_requested.connect(self.delete_note)
                 r = idx // cols
@@ -792,7 +1817,7 @@ class MainWindow(QWidget):
         else:
             self._current_cols = 1
             for note in self._notes:
-                card = NoteCard(note, is_list_view=True, parent=self.home_content)
+                card = NoteCard(note, is_list_view=True, parent=self.home_content, ui_scale=self._ui_scale)
                 card.clicked.connect(self.open_note)
                 card.delete_requested.connect(self.delete_note)
                 self.home_layout.addWidget(card)
@@ -804,8 +1829,7 @@ class MainWindow(QWidget):
         if not self.editor.toPlainText().strip() and not self.title_input.text().strip():
             return
 
-        reply = QMessageBox.question(
-            self,
+        reply = QMessageBox.question( self,
             "Clear Note",
             "Are you sure you want to clear this note?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
